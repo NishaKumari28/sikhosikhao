@@ -18,6 +18,7 @@ import {
   Sparkles,
   Minus,
 } from "lucide-react";
+import { useAIAssistant } from "@/components/ai/AIAssistantContext";
 
 interface NotesEditorProps {
   initialContent?: string;
@@ -31,13 +32,21 @@ type ViewMode = "write" | "preview" | "split";
 export default function NotesEditor({
   initialContent = "",
   onSave,
-  placeholder = "Apne notes yahan likhna shuru karo... \n\nMarkdown supported hai!\n\n## Example Heading\n\nContent yahan aayega...",
+  placeholder = "Start writing your notes here... \n\nMarkdown is supported!\n\n## Example Heading\n\nContent goes here...",
   readOnly = false,
 }: NotesEditorProps) {
   const [content, setContent] = useState(initialContent);
   const [viewMode, setViewMode] = useState<ViewMode>("write");
   const [isSaving, setIsSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<string | null>(null);
+  const { openAssistant } = useAIAssistant();
+
+  const handleAIAssist = () => {
+    openAssistant({
+      type: "notes",
+      contentPreview: content.slice(0, 1000),
+    });
+  };
 
   const handleSave = async () => {
     if (!onSave) return;
@@ -138,7 +147,10 @@ export default function NotesEditor({
           <div className="flex-1" />
 
           {/* AI Assistant button */}
-          <button className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium text-purple-300 bg-purple-500/10 border border-purple-500/20 hover:bg-purple-500/20 transition-all">
+          <button
+            onClick={handleAIAssist}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium text-purple-300 bg-purple-500/10 border border-purple-500/20 hover:bg-purple-500/20 hover:border-purple-400/40 transition-all"
+          >
             <Sparkles size={12} />
             AI Assist
           </button>
@@ -196,7 +208,7 @@ export default function NotesEditor({
         {(viewMode === "preview" || viewMode === "split") && (
           <div
             className="flex-1 p-5 overflow-y-auto prose-dark"
-            dangerouslySetInnerHTML={{ __html: `<p>${renderMarkdown(content || "_Preview yahan dikhega..._")}</p>` }}
+            dangerouslySetInnerHTML={{ __html: `<p>${renderMarkdown(content || "_Preview will appear here..._")}</p>` }}
           />
         )}
       </div>

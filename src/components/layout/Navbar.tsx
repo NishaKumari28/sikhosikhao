@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   BookOpen,
   Menu,
@@ -15,28 +15,58 @@ import {
   LayoutDashboard,
   Sparkles,
   ChevronDown,
+  LogIn,
+  UserPlus,
 } from "lucide-react";
-
-// Mock auth state — replace with real auth context later
-const mockUser = {
-  name: "Arjun Sharma",
-  username: "arjun_codes",
-  avatar: "AS",
-  booksCount: 3,
-};
+import { getStoredUser, clearStoredUser, UserProfile } from "@/lib/auth";
+import { useFirebaseAuth } from "@/context/FirebaseAuthContext";
 
 export default function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
-  const [isLoggedIn] = useState(true); // Toggle to false for logged-out state
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const pathname = usePathname();
+  const router = useRouter();
+  const { firebaseUser, logout: firebaseLogout } = useFirebaseAuth();
 
   useEffect(() => {
-    const handleScroll = () => setIsScrolled(window.scrollY > 20);
+    const handleScroll = () => setIsScrolled(window.scrollY > 15);
     window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
+
+    // Firebase user takes priority; fall back to localStorage
+    const syncUser = () => {
+      if (firebaseUser) {
+        setCurrentUser({
+          id:        firebaseUser.uid,
+          name:      firebaseUser.displayName ?? "User",
+          username:  (firebaseUser.email ?? firebaseUser.uid).split("@")[0].replace(/[^a-zA-Z0-9_]/g, "_"),
+          email:     firebaseUser.email ?? "",
+          avatar:    (firebaseUser.displayName ?? "U").slice(0, 2).toUpperCase(),
+          avatarUrl: firebaseUser.photoURL ?? undefined,
+          role:      "USER",
+          booksCount: 0,
+        });
+      } else {
+        setCurrentUser(getStoredUser());
+      }
+    };
+
+    syncUser();
+    window.addEventListener("auth-change", syncUser);
+
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      window.removeEventListener("auth-change", syncUser);
+    };
+  }, [firebaseUser]);
+
+  const handleSignOut = async () => {
+    await firebaseLogout();
+    setCurrentUser(null);
+    setProfileOpen(false);
+    router.push("/auth/login");
+  };
 
   const navLinks = [
     { href: "/library", label: "Library", icon: Library },
@@ -45,145 +75,216 @@ export default function Navbar() {
 
   const isActive = (href: string) => pathname === href;
 
+  // Don't render full navbar on pure auth pages or dashboard (dashboard has its own dedicated sidebar & topbar)
+  const isSpecialLayout = pathname.startsWith("/auth/") || pathname === "/dashboard";
+
+  if (isSpecialLayout) {
+    return null;
+  }
+
   return (
     <>
       <nav
-        className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
-          isScrolled ? "glass-strong shadow-lg shadow-black/20" : "bg-transparent"
+        className={`fixed top-0 ${pathname === "/dashboard" ? "lg:left-72 left-0" : "left-0"} right-0 z-40 transition-all duration-300 ${
+          isScrolled || pathname === "/dashboard"
+            ? "bg-[#07080e]/90 backdrop-blur-xl border-b border-white/[0.08] shadow-lg shadow-black/40 py-2.5"
+            : "bg-transparent py-4"
         }`}
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="flex items-center justify-between h-16">
-            {/* Logo */}
-            <Link href="/" className="flex items-center gap-2 group">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-600 to-blue-500 flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform">
-                <BookOpen size={16} className="text-white" />
-              </div>
-              <span className="font-bold text-lg tracking-tight">
-                <span className="gradient-text">Sikho</span>
-                <span className="text-slate-300">Sikhao</span>
-              </span>
-            </Link>
+          <div className="flex items-center justify-between">
+            {/* Logo — Hidden on desktop on dashboard since sidebar already has logo */}
+            <div className={pathname === "/dashboard" ? "lg:hidden" : ""}>
+              <Link href="/" className="flex items-center gap-2.5 group">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-violet-600 via-indigo-600 to-cyan-400 p-[1px] shadow-lg shadow-violet-500/25 group-hover:shadow-violet-500/40 transition-all duration-300">
+                  <div className="w-full h-full bg-[#0a0c16] rounded-[11px] flex items-center justify-center">
+                    <BookOpen size={18} className="text-violet-300 group-hover:scale-110 transition-transform" />
+                  </div>
+                </div>
+                <div className="flex flex-col">
+                  <span className="font-heading font-bold text-lg tracking-tight leading-none">
+                    <span className="text-white">Sikho</span>
+                    <span className="gradient-text">Sikhao</span>
+                  </span>
+                  <span className="text-[9px] font-medium text-slate-500 tracking-wider uppercase mt-0.5">
+                    Community Platform
+                  </span>
+                </div>
+              </Link>
+            </div>
 
-            {/* Desktop Nav */}
-            <div className="hidden md:flex items-center gap-1">
+            {/* Desktop Navigation Links */}
+            <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.03] border border-white/[0.06] backdrop-blur-md">
+              <Link
+                href="/"
+                className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                  pathname === "/"
+                    ? "bg-violet-600/20 text-violet-300 border border-violet-500/30 shadow-sm"
+                    : "text-slate-400 hover:text-white hover:bg-white/[0.05]"
+                }`}
+              >
+                Home
+              </Link>
               {navLinks.map(({ href, label, icon: Icon }) => (
                 <Link
                   key={href}
                   href={href}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all ${
                     isActive(href)
-                      ? "bg-purple-600/20 text-purple-400 border border-purple-600/30"
-                      : "text-slate-400 hover:text-slate-100 hover:bg-white/5"
+                      ? "bg-violet-600/20 text-violet-300 border border-violet-500/30 shadow-sm"
+                      : "text-slate-400 hover:text-white hover:bg-white/[0.05]"
                   }`}
                 >
-                  <Icon size={15} />
+                  <Icon size={13} />
                   {label}
                 </Link>
               ))}
             </div>
 
-            {/* Right side */}
-            <div className="flex items-center gap-2">
-              {isLoggedIn ? (
-                <>
-                  {/* Search */}
-                  <Link
-                    href="/library"
-                    className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-white/5 transition-all text-sm border border-white/5"
-                  >
-                    <Search size={15} />
-                    <span className="text-xs text-slate-500">Search books...</span>
-                    <kbd className="text-xs bg-white/5 border border-white/10 rounded px-1.5 py-0.5">⌘K</kbd>
-                  </Link>
+            {/* Right Side Actions */}
+            <div className="flex items-center gap-2.5">
+              {/* Quick Search */}
+              <Link
+                href="/library"
+                className="hidden sm:flex items-center gap-2.5 px-3.5 py-1.5 rounded-xl text-slate-400 hover:text-slate-200 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.08] transition-all text-xs"
+              >
+                <Search size={14} className="text-slate-500" />
+                <span className="text-slate-400">Search books...</span>
+                <kbd className="text-[10px] bg-white/[0.06] border border-white/10 rounded px-1.5 py-0.5 text-slate-400 font-mono">
+                  ⌘K
+                </kbd>
+              </Link>
 
-                  {/* Create Book */}
-                  <Link
-                    href="/create"
-                    className="btn-primary text-sm px-4 py-2 hidden sm:flex"
-                  >
-                    <PlusCircle size={15} />
-                    New Book
-                  </Link>
-
-                  {/* Notifications */}
-                  <button className="relative w-9 h-9 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-200 hover:bg-white/5 transition-all border border-white/5">
-                    <Bell size={16} />
-                    <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-purple-500 rounded-full"></span>
-                  </button>
-
-                  {/* Profile Dropdown */}
-                  <div className="relative">
-                    <button
-                      onClick={() => setProfileOpen(!profileOpen)}
-                      className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-white/5 transition-all border border-white/5"
-                    >
-                      <div className="w-7 h-7 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-xs font-bold text-white">
-                        {mockUser.avatar}
-                      </div>
-                      <ChevronDown
-                        size={13}
-                        className={`text-slate-400 transition-transform ${profileOpen ? "rotate-180" : ""}`}
-                      />
-                    </button>
-
-                    {profileOpen && (
-                      <div className="absolute right-0 mt-2 w-56 glass-strong rounded-xl border border-white/10 shadow-xl shadow-black/50 overflow-hidden z-50 animate-fade-in">
-                        <div className="p-3 border-b border-white/5">
-                          <p className="text-sm font-semibold text-slate-100">{mockUser.name}</p>
-                          <p className="text-xs text-slate-500">@{mockUser.username}</p>
-                          <p className="text-xs text-purple-400 mt-0.5">{mockUser.booksCount} books published</p>
-                        </div>
-                        <div className="p-1.5">
-                          <Link
-                            href={`/profile/${mockUser.username}`}
-                            onClick={() => setProfileOpen(false)}
-                            className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-slate-300 hover:text-slate-100 hover:bg-white/5 transition-all"
-                          >
-                            <User size={14} />
-                            My Profile
-                          </Link>
-                          <Link
-                            href="/dashboard"
-                            onClick={() => setProfileOpen(false)}
-                            className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-slate-300 hover:text-slate-100 hover:bg-white/5 transition-all"
-                          >
-                            <LayoutDashboard size={14} />
-                            Dashboard
-                          </Link>
-                          <Link
-                            href="/create"
-                            onClick={() => setProfileOpen(false)}
-                            className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-slate-300 hover:text-slate-100 hover:bg-white/5 transition-all"
-                          >
-                            <Sparkles size={14} />
-                            Create Book
-                          </Link>
-                          <div className="divider my-1.5"></div>
-                          <button className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-all w-full">
-                            <LogOut size={14} />
-                            Logout
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </>
-              ) : (
-                <>
-                  <Link href="/auth/login" className="btn-ghost text-sm">
-                    Login
-                  </Link>
-                  <Link href="/auth/register" className="btn-primary text-sm px-4 py-2">
-                    Get Started
-                  </Link>
-                </>
+              {/* Create Book Button — only shown when logged in */}
+              {currentUser && (
+                <Link
+                  href="/create"
+                  className="btn-primary text-xs px-4 py-2 hidden sm:inline-flex"
+                >
+                  <PlusCircle size={14} />
+                  New Book
+                </Link>
               )}
 
-              {/* Mobile menu toggle */}
+              {/* Notifications */}
+              {currentUser && (
+                <button
+                  aria-label="Notifications"
+                  className="relative w-9 h-9 rounded-xl flex items-center justify-center text-slate-400 hover:text-white bg-white/[0.03] hover:bg-white/[0.07] border border-white/[0.08] transition-all"
+                >
+                  <Bell size={15} />
+                  <span className="absolute top-2 right-2 w-2 h-2 bg-violet-400 rounded-full animate-ping" />
+                  <span className="absolute top-2 right-2 w-2 h-2 bg-violet-500 rounded-full" />
+                </button>
+              )}
+
+              {/* Profile Menu or Log In Buttons */}
+              {currentUser ? (
+                <div className="relative">
+                  <button
+                    onClick={() => setProfileOpen(!profileOpen)}
+                    className="flex items-center gap-2 p-1 rounded-xl bg-white/[0.03] hover:bg-white/[0.07] border border-white/[0.08] transition-all"
+                  >
+                    {/* Avatar: real photo for Firebase users, initials for others */}
+                    <div className="w-7 h-7 rounded-lg overflow-hidden bg-gradient-to-tr from-violet-600 via-indigo-600 to-cyan-500 flex items-center justify-center text-xs font-bold text-white shadow-sm flex-shrink-0">
+                      {currentUser.avatarUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={currentUser.avatarUrl}
+                          alt={currentUser.name}
+                          className="w-full h-full object-cover"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        currentUser.avatar || currentUser.name.slice(0, 2).toUpperCase()
+                      )}
+                    </div>
+                    <ChevronDown
+                      size={13}
+                      className={`text-slate-400 mr-1 transition-transform duration-200 ${
+                        profileOpen ? "rotate-180" : ""
+                      }`}
+                    />
+                  </button>
+
+                  {profileOpen && (
+                    <div className="absolute right-0 mt-2 w-56 glass-strong rounded-2xl border border-white/10 shadow-2xl shadow-black/80 overflow-hidden z-50">
+                      <div className="p-3.5 border-b border-white/[0.08] bg-white/[0.02]">
+                        <div className="flex items-center gap-2.5 mb-2">
+                          {/* Profile photo */}
+                          <div className="w-8 h-8 rounded-lg overflow-hidden bg-gradient-to-tr from-violet-600 via-indigo-600 to-cyan-500 flex items-center justify-center text-xs font-bold text-white flex-shrink-0">
+                            {currentUser.avatarUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={currentUser.avatarUrl}
+                                alt={currentUser.name}
+                                className="w-full h-full object-cover"
+                                referrerPolicy="no-referrer"
+                              />
+                            ) : (
+                              currentUser.avatar || currentUser.name.slice(0, 2).toUpperCase()
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold text-white truncate">{currentUser.name}</p>
+                            <p className="text-[11px] text-slate-400 truncate">{currentUser.email ?? `@${currentUser.username}`}</p>
+                          </div>
+                        </div>
+                        <div className="mt-2 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-violet-500/10 border border-violet-500/20 text-[10px] text-violet-300 font-medium">
+                          <Sparkles size={10} />
+                          {currentUser.booksCount ?? 0} published books
+                        </div>
+                      </div>
+                      <div className="p-1.5 space-y-0.5">
+                        <Link
+                          href={`/profile/${currentUser.username}`}
+                          onClick={() => setProfileOpen(false)}
+                          className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-slate-300 hover:text-white hover:bg-white/[0.06] transition-all"
+                        >
+                          <User size={14} className="text-slate-400" />
+                          My Profile
+                        </Link>
+                        <Link
+                          href="/dashboard"
+                          onClick={() => setProfileOpen(false)}
+                          className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-slate-300 hover:text-white hover:bg-white/[0.06] transition-all"
+                        >
+                          <LayoutDashboard size={14} className="text-slate-400" />
+                          Dashboard
+                        </Link>
+                        <button
+                          onClick={handleSignOut}
+                          className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-rose-400 hover:bg-rose-500/10 transition-all border-t border-white/[0.06] mt-1"
+                        >
+                          <LogOut size={14} />
+                          Sign Out
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Link
+                    href="/auth/login"
+                    className="text-xs font-semibold text-slate-300 hover:text-white px-3 py-1.5 rounded-xl hover:bg-white/[0.06] transition-all"
+                  >
+                    Log In
+                  </Link>
+                  <Link
+                    href="/auth/register"
+                    className="btn-primary text-xs px-3.5 py-1.5"
+                  >
+                    Register
+                  </Link>
+                </div>
+              )}
+
+              {/* Mobile Menu Button */}
               <button
-                className="md:hidden w-9 h-9 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-200 hover:bg-white/5 transition-all"
                 onClick={() => setMobileOpen(!mobileOpen)}
+                className="md:hidden w-9 h-9 rounded-xl flex items-center justify-center text-slate-300 hover:text-white bg-white/[0.03] border border-white/[0.08]"
+                aria-label="Toggle menu"
               >
                 {mobileOpen ? <X size={18} /> : <Menu size={18} />}
               </button>
@@ -191,47 +292,58 @@ export default function Navbar() {
           </div>
         </div>
 
-        {/* Mobile menu */}
+        {/* Mobile dropdown */}
         {mobileOpen && (
-          <div className="md:hidden glass-strong border-t border-white/5 animate-fade-in">
-            <div className="px-4 py-3 space-y-1">
-              {navLinks.map(({ href, label, icon: Icon }) => (
+          <div className="md:hidden px-4 pt-3 pb-5 glass-strong border-b border-white/[0.08] mt-2 space-y-2">
+            <Link
+              href="/"
+              onClick={() => setMobileOpen(false)}
+              className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-sm text-slate-200 hover:bg-white/[0.06]"
+            >
+              <BookOpen size={16} className="text-violet-400" />
+              Home
+            </Link>
+            {navLinks.map(({ href, label, icon: Icon }) => (
+              <Link
+                key={href}
+                href={href}
+                onClick={() => setMobileOpen(false)}
+                className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-sm text-slate-200 hover:bg-white/[0.06]"
+              >
+                <Icon size={16} className="text-violet-400" />
+                {label}
+              </Link>
+            ))}
+            {currentUser ? (
+              <Link
+                href="/create"
+                onClick={() => setMobileOpen(false)}
+                className="btn-primary w-full justify-center text-sm py-2.5 mt-2"
+              >
+                <PlusCircle size={16} />
+                Create New Book
+              </Link>
+            ) : (
+              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-white/[0.08]">
                 <Link
-                  key={href}
-                  href={href}
+                  href="/auth/login"
                   onClick={() => setMobileOpen(false)}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                    isActive(href)
-                      ? "bg-purple-600/20 text-purple-400"
-                      : "text-slate-400 hover:text-slate-100 hover:bg-white/5"
-                  }`}
+                  className="btn-secondary justify-center text-xs py-2.5"
                 >
-                  <Icon size={16} />
-                  {label}
+                  Log In
                 </Link>
-              ))}
-              <div className="pt-2 border-t border-white/5">
                 <Link
-                  href="/create"
+                  href="/auth/register"
                   onClick={() => setMobileOpen(false)}
-                  className="btn-primary w-full justify-center"
+                  className="btn-primary justify-center text-xs py-2.5"
                 >
-                  <PlusCircle size={16} />
-                  New Book
+                  Register
                 </Link>
               </div>
-            </div>
+            )}
           </div>
         )}
       </nav>
-
-      {/* Backdrop for dropdown */}
-      {profileOpen && (
-        <div
-          className="fixed inset-0 z-40"
-          onClick={() => setProfileOpen(false)}
-        />
-      )}
     </>
   );
 }
